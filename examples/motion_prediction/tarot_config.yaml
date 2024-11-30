@@ -1,0 +1,14 @@
+exp_name: 'test'
+seed: 42 # random seed
+debug: False # debug mode, will use cpu only
+device: 'cpu'
+selection_ratio: 0.2
+selection_method: 'otm'
+ckpt_dir: './unitraj_ckpt'
+ckpt_usage: 2
+projection_dimension: 4
+feature_save_dir: './wfd_results'
+k_fold_splits: 10
+merge_target_data: True
+data_weighting: False
+
