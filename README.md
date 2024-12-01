@@ -1,5 +1,5 @@
 <div align="center">
-<img align="left" width="100" height="100" src="docs/assets/tarot.png" alt="">
+<img align="left" width="80" height="80" src="docs/assets/tarot.png" alt="">
 
 # TAROT: Targeted Data Selection via Optimal Transport Distance Minimization
 [Lan Feng](https://alan-lanfeng.github.io/), [Fan Nie](https://scholar.google.com/citations?user=o2lsU8YAAAAJ&hl=en), [Yuejiang Liu](https://sites.google.com/view/yuejiangliu/home), [Alexandre Alahi](https://people.epfl.ch/alexandre.alahi?lang=en)
