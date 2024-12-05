@@ -13,11 +13,13 @@ from omegaconf import OmegaConf
 import os
 
 
-def tarot_selection(candidate_loader, target_loader, model, config='tarot_config.yaml'):
+def tarot_selection(candidate_loader, target_loader, model, config='unitraj/tarot_config.yaml'):
     import yaml
     import glob
     from tarot.wfd_estimator import WFDEstimator
     from tarot.data_selector import DataSelector
+    from tarot.utils import qualitative_analysis, set_dataloader_params
+    from utils.visualization import visualize_batch_data 
 
     from tqdm import tqdm
     def transform_batch(batch):
@@ -26,9 +28,13 @@ def tarot_selection(candidate_loader, target_loader, model, config='tarot_config
         keys = [k for k in inp_dict.keys() if type(inp_dict[k]) == torch.Tensor]
         batch.append(keys)
         return batch
-
+    print("Current working directory:", os.getcwd())
     with open(config, "r") as f:
         cfg = yaml.safe_load(f)
+
+    
+    _candidate_loader = set_dataloader_params(candidate_loader,'shuffle', False)
+    _target_loader = set_dataloader_params(target_loader,'shuffle', False)
 
     device = cfg['device']
     exp_name = cfg['exp_name']
@@ -43,6 +49,7 @@ def tarot_selection(candidate_loader, target_loader, model, config='tarot_config
     feature_save_dir = cfg['feature_save_dir']
     model.load_state_dict(ckpts[-1])
     model = model.eval()
+    model = model.to(device)
     wfd_estimator = WFDEstimator(model=model,
                                  task='motion_prediction',
                                  proj_dim=cfg['projection_dimension'],
@@ -51,25 +58,31 @@ def tarot_selection(candidate_loader, target_loader, model, config='tarot_config
 
     for model_id, ckpt in enumerate(tqdm(ckpts)):
         wfd_estimator.load_checkpoint(ckpt, model_id=model_id)
-        for batch in tqdm(candidate_loader):
+        print('collecting grads for candidate set')
+        for batch in tqdm(_candidate_loader):
             batch = transform_batch(batch)
             wfd_estimator.collect_grads(batch=batch, num_samples=batch[0].shape[0])
-        for batch in target_loader:
+        print('collecting grads for target set')
+        for batch in tqdm(_target_loader):
             batch = transform_batch(batch)
             wfd_estimator.collect_grads(batch=batch, num_samples=batch[0].shape[0],is_target=True)
 
-    scores,candidate_features, target_features = wfd_estimator.get_wfd(exp_name=exp_name)
+    scores,candidate_features, target_features = wfd_estimator.get_wfd()
 
     data_selector = DataSelector(cfg)
 
     selected_index, weight = data_selector.select_data(scores, candidate_features, target_features)
+    
+    qualitative_analysis(exp_name, selected_index, weight, scores, candidate_features, target_features, _candidate_loader, _target_loader, visualize_batch_data)
 
     train_loader = data_selector.update_dataloader_with_weights(candidate_loader,target_loader,selected_index, weight)
+
+
 
     return train_loader
 
 
-@hydra.main(version_base=None, config_path="UniTraj/unitraj/configs", config_name="config")
+@hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg):
     set_seed(cfg.seed)
     OmegaConf.set_struct(cfg, False)  # Open the struct
@@ -96,11 +109,11 @@ def train(cfg):
     call_backs.append(checkpoint_callback)
 
     train_loader = DataLoader(
-        train_set, batch_size=train_batch_size, num_workers=cfg.load_num_workers,shuffle=False, drop_last=False,
+        train_set, batch_size=train_batch_size, num_workers=cfg.load_num_workers,shuffle=True, drop_last=False,
         collate_fn=train_set.collate_fn)
 
     val_loader = DataLoader(
-        val_set, batch_size=eval_batch_size, num_workers=cfg.load_num_workers, shuffle=False, drop_last=False,
+        val_set, batch_size=eval_batch_size, num_workers=cfg.load_num_workers, shuffle=True, drop_last=False,
         collate_fn=train_set.collate_fn)
 
     trainer = pl.Trainer(
@@ -114,7 +127,7 @@ def train(cfg):
         callbacks=call_backs
     )
 
-    cfg['val_data_path'] = ["data_samples/nuscenes"]
+    cfg['val_data_path'] = cfg["target_data_path"]
     target_set = build_dataset(cfg, val=True)
     target_loader = DataLoader(
         target_set, batch_size=eval_batch_size, num_workers=cfg.load_num_workers, shuffle=False, drop_last=False,

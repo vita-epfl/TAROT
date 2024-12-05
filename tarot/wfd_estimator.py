@@ -13,7 +13,7 @@ from typing import Iterable, Optional, Union
 from pathlib import Path
 from tqdm import tqdm
 from torch import Tensor
-
+import os
 import logging
 import numpy as np
 import torch
@@ -252,7 +252,11 @@ class WFDEstimator:
         num_samples: Optional[int] = None,
         is_target: bool = False,
     ) -> None:
-
+        if num_samples is not None:
+            inds = np.arange(self._last_ind, self._last_ind + num_samples)
+            self._last_ind += num_samples
+        else:
+            num_samples = inds.reshape(-1).shape[0]
 
         mode = "target" if is_target else "candidate"
         grads = self.gradient_computer.compute_per_sample_grad(batch=batch)
@@ -264,6 +268,10 @@ class WFDEstimator:
             grads.to(self.dtype).cpu().clone().detach()
         )
         self.saver.current_store[f"{mode}_is_collected"][inds] = 1
+        
+        if self._last_ind == self.candidate_set_size:
+            self._last_ind = 0
+            print('finished grad collection')
 
     def get_xtx(self, grads: Tensor) -> Tensor:
         self.proj_dim = grads.shape[1]
@@ -278,24 +286,11 @@ class WFDEstimator:
         return result
 
 
-    def get_wfd(
-        self,
-        exp_name: str,
-        model_ids: Iterable[int] = None,
-        allow_skip: bool = False,
-    ) -> Tensor:
-
-        if model_ids is None:
-            model_ids = self.saver.model_ids
-        else:
-            model_ids = {
-                model_id: self.saver.model_ids[model_id] for model_id in model_ids
-            }
-        assert len(model_ids) > 0, "No model IDs to finalize scores for"
-
-        _completed = [False] * len(model_ids)
-
-        self.saver.load_current_store(list(model_ids.keys())[0])
+    def get_wfd(self) -> Tensor:
+        # find all directories within self.savedir
+        model_ids = [d for d in os.listdir(self.save_dir) if os.path.isdir(os.path.join(self.save_dir, d))]
+        print(model_ids)
+        self.saver.load_current_store(model_ids[0])
 
         _g_mmp = self.saver.current_store["candidate_grads"]
         _g_target_mmp = self.saver.current_store["target_grads"]
@@ -312,7 +307,6 @@ class WFDEstimator:
             )
             _g_cpu += g
             _g_target_cpu += g_target
-            _completed[j] = True
 
         _g_cpu.div_(len(model_ids))
         _g_target_cpu.div_(len(model_ids))
@@ -351,3 +345,21 @@ class WFDEstimator:
         return _scores_on_cpu,g,g_target
 
 
+def get_loss_motion(
+    model,
+    weights,
+    buffers,
+    *batch,
+) -> Tensor:
+    keys = batch[-1]
+    batch = batch[:-1]
+    batch = {k: v.unsqueeze(0) for k, v in zip(keys, batch)}
+    batch = {'batch_size': batch['obj_trajs'].shape[0], 'input_dict': batch}
+    prediction, loss = ch.func.functional_call(model, (weights, buffers), batch)
+
+    return loss.sum()/1000
+
+
+TASK_TO_MODELOUT = {
+    "motion_prediction": get_loss_motion
+}

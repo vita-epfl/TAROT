@@ -1,2 +1,4 @@
 .DS_Store
-/examples
+
+__pycache__
+*.egg-info

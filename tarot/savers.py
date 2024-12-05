@@ -29,7 +29,6 @@ class AbstractSaver(ABC):
         self.use_half_precision = use_half_precision
 
         os.makedirs(self.save_dir, exist_ok=True)
-        os.makedirs(self.save_dir.joinpath("scores"), exist_ok=True)
 
         self.logger = logging.getLogger("STORE")
         self.logger.setLevel(logging_level)
@@ -256,7 +255,6 @@ class MmapSaver(AbstractSaver):
             )
         self.experiments[exp_name] = {
             "num_targets": num_targets,
-            "scores_path": str(self.save_dir.joinpath(f"scores/{exp_name}.mmap")),
             "scores_finalized": 0,
         }
 
@@ -323,11 +321,11 @@ class MmapSaver(AbstractSaver):
                 (self.target_set_size, 1),
                 np.int32,
             ),
-            "whitened_feature_distances": (
-                prefix.joinpath("whitened_feature_distances.mmap"),
-                (self.target_set_size, self.target_set_size),
-                None,
-            )
+            # "whitened_feature_distances": (
+            #     prefix.joinpath("whitened_feature_distances.mmap"),
+            #     (self.target_set_size, self.target_set_size),
+            #     None,
+            # )
         }
 
         for name, (path, shape, dtype) in to_load.items():

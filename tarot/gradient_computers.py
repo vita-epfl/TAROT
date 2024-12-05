@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Iterable, Optional
 from torch import Tensor
 from .utils import get_num_params, parameters_to_vector
-from .modelout_functions import AbstractModelOutput
 import logging
 import torch
 
@@ -29,27 +28,12 @@ class AbstractGradientComputer(ABC):
     def __init__(
         self,
         model: torch.nn.Module,
-        task: AbstractModelOutput,
+        task,
         grad_dim: Optional[int] = None,
         dtype: Optional[torch.dtype] = torch.float16,
         device: Optional[torch.device] = "cuda",
     ) -> None:
-        """Initializes attributes, nothing too interesting happening.
 
-        Args:
-            model (torch.nn.Module):
-                model
-            task (AbstractModelOutput):
-                task (model output function)
-            grad_dim (int, optional):
-                Size of the gradients (number of model parameters). Defaults to
-                None.
-            dtype (torch.dtype, optional):
-                Torch dtype of the gradients. Defaults to torch.float16.
-            device (torch.device, optional):
-                Torch device where gradients will be stored. Defaults to 'cuda'.
-
-        """
         self.model = model
         self.loss_fn = task
         self.grad_dim = grad_dim
@@ -68,7 +52,7 @@ class FunctionalGradientComputer(AbstractGradientComputer):
     def __init__(
         self,
         model: torch.nn.Module,
-        task: AbstractModelOutput,
+        task,
         grad_dim: int,
         dtype: torch.dtype,
         device: torch.device,
@@ -137,21 +121,3 @@ class FunctionalGradientComputer(AbstractGradientComputer):
                     del grads[param_name]
         return grads
 
-def get_loss_motion(
-    model,
-    weights,
-    buffers,
-    *batch,
-) -> Tensor:
-    keys = batch[-1]
-    batch = batch[:-1]
-    batch = {k: v.unsqueeze(0) for k, v in zip(keys, batch)}
-    batch = {'batch_size': batch['obj_trajs'].shape[0], 'input_dict': batch}
-    prediction, loss = ch.func.functional_call(model, (weights, buffers), batch)
-
-    return loss.sum()/1000
-
-
-TASK_TO_MODELOUT = {
-    "motion_prediction": get_loss_motion
-}

@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import os
 ch = torch
 import seaborn as sns
+from sklearn.manifold import TSNE
+from matplotlib.colors import TwoSlopeNorm
+import wandb
 
 def parameters_to_vector(parameters) -> Tensor:
     """
@@ -288,48 +291,39 @@ def get_parameter_chunk_sizes(
 
 
 
-def visualize_score(similarity_matrix):
-    mean_similarities = np.mean(similarity_matrix, axis=1)
-    max_similarities = np.max(similarity_matrix, axis=1)
-    min_similarities = np.min(similarity_matrix, axis=1)
+def set_dataloader_params(original_loader,key,value):
+    from torch.utils.data import DataLoader
+    loader_params = vars(original_loader).copy()
+    loader_params[key] = value
+    unwanted_keys = [key for key in loader_params.keys() if key.startswith('_')]
+    for key in unwanted_keys:
+        loader_params.pop(key, None)
+    loader_params.pop("batch_sampler", None)
+    loader_params.pop("sampler", None)
+    updated_loader = DataLoader(**loader_params)
+    return updated_loader
 
-    plt.figure(figsize=(18, 6))
+def qualitative_analysis(exp_name, selected_index, weight, scores, g, g_target, candidate_loader, target_loader, vis_func):
+    wandb_image = {}
+    plt.style.use('ggplot')
+    wandb_image['tsne'] = tsne_visulization(weight, selected_index,g,g_target)
+    wandb_image['influence_estimation'] = visualize_supportive_and_negative(candidate_loader, target_loader, scores, vis_func)
+    wandb.init(project='tarot', name=exp_name)
+    wandb.log(wandb_image)
+    return
 
-    cmap = sns.color_palette("colorblind", 3)
 
-    plt.subplot(1, 3, 1)
-    sns.histplot(mean_similarities, kde=True, bins=20, color=cmap[0])
-    plt.title('Average Score Distribution')
-    plt.xlabel('Average Score')
-    plt.ylabel('Frequency')
 
-    plt.subplot(1, 3, 2)
-    sns.histplot(max_similarities, kde=True, bins=20, color='red')
-    plt.title('Maximum Score Distribution')
-    plt.xlabel('Maximum Score')
-    plt.ylabel('Frequency')
+def tsne_visulization(weight, selected_index, g,g_target):
 
-    plt.subplot(1, 3, 3)
-    sns.histplot(min_similarities, kde=True, bins=20, color='green')
-    plt.title('Minimum Score Distribution')
-    plt.xlabel('Minimum Score')
-    plt.ylabel('Frequency')
-
-    plt.tight_layout()
-    return plt
-
-def tsne_visulization():
-    from sklearn.manifold import TSNE
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import TwoSlopeNorm
 
     sample_num_train = 2400
     sample_num_val = 500
 
     weight[:] = 1
-    potential = np.zeros(traker.g_normed.shape[0])
+    potential = np.zeros(g.shape[0])
     potential[:] = -1
-    potential[selected_file] = weight
+    potential[selected_index] = weight
 
     print(np.mean(potential), np.max(potential), np.min(potential))
     # Normalize the potential values for gradient color mapping with a center at 0
@@ -340,14 +334,13 @@ def tsne_visulization():
     norm = TwoSlopeNorm(vmin=min(potential), vcenter=np.mean(potential), vmax=max(potential))
 
     # Create the custom colormap
-    g = np.array(traker.g_normed.cpu())
-    g_target = np.array(traker.g_target.cpu())
+    g = np.array(g.cpu())
+    g_target = np.array(g_target.cpu())
     g_random_sample = np.random.choice(len(g), min(len(g), sample_num_train), replace=False)
     g = g[g_random_sample]
     potential = potential[g_random_sample]
     g_target_random_sample = np.random.choice(len(g_target), min(len(g_target), sample_num_val), replace=False)
     g_target = g_target[g_target_random_sample]
-
 
     all_gradient = np.concatenate([g, g_target], axis=0)
 
@@ -357,8 +350,6 @@ def tsne_visulization():
     print('fit done')
     train_tsne = tsne_points[:len(g)]
     val_tsne = tsne_points[len(g):]
-    # Define colorblind-friendly palette for validation points
-    colorblind_palette = sns.color_palette("colorblind", as_cmap=False)
 
     size = 30
     alpha = 1
@@ -373,30 +364,28 @@ def tsne_visulization():
     plt.scatter(val_tsne[:, 0], val_tsne[:, 1],
                 color="#FE938C", label='Target Points', s=size, alpha=1,zorder=0)
 
-    # Add a colorbar for the potential gradient (train points)
-    #cbar = plt.colorbar(scatter_train, label='Potential (Importance)')
     plt.axis('off')
 
-    return plt
+    return wandb.Image(plt)
 
-def visualize_supportive_and_negative():
+def visualize_supportive_and_negative(train_loader, val_loader, scores, vis_func):
     total_num = len(val_loader.dataset)
-    sample_interval = max(total_num//77,1)
+    sample_interval = max(total_num//30,1)
     image_list = []
     for i in range(0, total_num, sample_interval):
         fig, ax = plt.subplots(1,5, figsize=(20, 4))
 
         val_data = val_loader.dataset[i]
-        _ = visualize_batch_data(ax[0], val_data)
+        _ = vis_func(ax[0], val_data)
 
-        top_scores = _scores[:, i].argsort()[-2:][::-1]
-        bottom_scores = _scores[:, i].argsort()[:2][::-1]
+        top_scores = scores[:, i].argsort()[-2:][::-1]
+        bottom_scores = scores[:, i].argsort()[:2][::-1]
 
         for ii, train_im_ind in enumerate(top_scores):
-            _ = visualize_batch_data(ax[ii+1], train_loader.dataset[train_im_ind])
+            _ = vis_func(ax[ii+1], train_loader.dataset[train_im_ind])
 
         for ii, train_im_ind in enumerate(bottom_scores):
-            _ = visualize_batch_data(ax[ii+3], train_loader.dataset[train_im_ind])
+            _ = vis_func(ax[ii+3], train_loader.dataset[train_im_ind])
 
         plt.tight_layout()
         #plt.show()

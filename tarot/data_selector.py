@@ -1,6 +1,6 @@
 import geomloss
 import numpy as np
-from tarot.score_computers import get_matrix_mult
+from tarot.utils import get_matrix_mult
 import os
 from multiprocessing import Pool
 import torch
@@ -8,6 +8,9 @@ from sklearn.model_selection import KFold
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 import numpy as np
 import gzip
+import torch
+from torch.utils.data import Dataset
+
 def numba_topk_2d_axis0(args):
     arr, k = args
 
@@ -139,7 +142,7 @@ class DataSelector:
             weight = f[0].detach().cpu().numpy()
 
         elif method == 'fixed_size':
-
+            print(f'num_selected: {num_selected}')
             g = candidate_feautres.to(torch.float32).to('cpu')
             g_target = target_features.to(torch.float32).to('cpu')
             sorted_score, sorted_indices = multi_process_sort(score)
@@ -153,6 +156,7 @@ class DataSelector:
                     unique_set = updated_set
                 else:
                     number_to_add = num_selected - len(unique_set)
+                    print(f'number to add: {number_to_add}')
                     diff = np.setdiff1d(this_layer, list(unique_set))
 
                     distance.potentials = True
@@ -181,11 +185,9 @@ class DataSelector:
             unwanted_keys = [key for key in loader_params.keys() if key.startswith('_')]
             for key in unwanted_keys:
                 loader_params.pop(key, None)
-            if loader_params.get("batch_sampler") is not None:
-                for param in ["batch_size", "shuffle", "sampler", "drop_last"]:
-                    loader_params.pop(param, None)
-            else:
-                loader_params.pop("batch_sampler", None)
+
+            loader_params.pop("batch_sampler", None)
+            
             updated_loader = DataLoader(**loader_params)
 
             return updated_loader
@@ -219,15 +221,34 @@ class DataSelector:
             repeated_indices = []
             for idx, weight in zip(select_and_target_index, weight):
                 repeated_indices.extend([idx] * int(weight))
-            subset_dataset = Subset(merged_dataset, repeated_indices)
+            subset_dataset = CustomSubset(merged_dataset, repeated_indices)
 
         else:
             weight_candidate = weight[:-target_num]
             repeated_indices = []
             for idx, weight in zip(selected_index, weight_candidate):
                 repeated_indices.extend([idx] * int(weight))
-            original_dataset = target_loader.dataset
-            subset_dataset = Subset(original_dataset, repeated_indices)
+            original_dataset = candidate_loader.dataset
+            subset_dataset = CustomSubset(original_dataset, repeated_indices)
+        print(len(subset_dataset))
         candidate_loader = replace_dataloader_dataset_auto(candidate_loader, subset_dataset)
 
         return candidate_loader
+
+
+
+
+class CustomSubset(Dataset):
+    def __init__(self, dataset, indices):
+
+        self.dataset = dataset
+        self.indices = indices
+
+    def __getitem__(self, idx):
+
+        original_idx = self.indices[idx]
+        return self.dataset[original_idx]
+
+    def __len__(self):
+
+        return len(self.indices)
