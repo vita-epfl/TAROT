@@ -7,6 +7,10 @@
 [Visual Intelligence for Transportation Lab, EPFL](https://www.epfl.ch/labs/vita/) 
 
 Stanford University
+
+[**Paper**](https://arxiv.org/pdf/2412.00420)
+
+
 </div>
 <div align="center">
 <img align="center" src="docs/assets/pull.png" alt="System Overview" width="500">
@@ -40,11 +44,9 @@ This repo relies on the [TRAK](https://trak.readthedocs.io/en/latest/) implement
 ## For citation:
 
 ```
-@misc{feng2024tarot,
-    title={TAROT: Targeted Data Selection via Optimal Transport},
-    author={Lan Feng and Fan Nie and Yuejiang Liu and Alexandre Alahi},
-    year={2024},
-    eprint={2412.00420},
-    archivePrefix={arXiv},
-    primaryClass={cs.LG}
+@article{feng2024tarot,
+  title={TAROT: Targeted Data Selection via Optimal Transport},
+  author={Feng, Lan and Nie, Fan and Liu, Yuejiang and Alahi, Alexandre},
+  journal={arXiv preprint arXiv:2412.00420},
+  year={2024}
 }
